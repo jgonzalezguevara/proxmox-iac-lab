@@ -1,0 +1,34 @@
+---
+- name: Validate Linux lab nodes
+  hosts: lab
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Verify privilege escalation
+      ansible.builtin.command: id -u
+      register: effective_uid
+      changed_when: false
+
+    - name: Verify Internet connectivity
+      ansible.builtin.uri:
+        url: https://deb.debian.org/
+        method: HEAD
+        status_code: 200
+        timeout: 10
+      register: internet_check
+      changed_when: false
+
+    - name: Show validation summary
+      ansible.builtin.debug:
+        msg:
+          - "Host: {{ ansible_hostname }}"
+          - "Distribution: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "Kernel: {{ ansible_kernel }}"
+          - "Architecture: {{ ansible_architecture }}"
+          - "vCPU: {{ ansible_processor_vcpus }}"
+          - "Memory: {{ ansible_memtotal_mb }} MiB"
+          - "IPv4: {{ ansible_default_ipv4.address }}"
+          - "Gateway: {{ ansible_default_ipv4.gateway }}"
+          - "Become UID: {{ effective_uid.stdout }}"
+          - "Internet HTTP status: {{ internet_check.status }}"
