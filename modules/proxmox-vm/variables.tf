@@ -58,3 +58,16 @@ variable "started" {
   type        = bool
   default     = true
 }
+
+variable "ipv4_address" {
+  description = "IPv4 address in CIDR notation or dhcp"
+  type        = string
+  default     = "dhcp"
+}
+
+variable "ipv4_gateway" {
+  description = "IPv4 default gateway"
+  type        = string
+  default     = null
+  nullable    = true
+}
