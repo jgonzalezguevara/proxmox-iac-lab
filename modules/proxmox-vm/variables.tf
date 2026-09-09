@@ -71,3 +71,16 @@ variable "ipv4_gateway" {
   default     = null
   nullable    = true
 }
+
+variable "dns_servers" {
+  description = "DNS servers for cloud-init"
+  type        = list(string)
+  default     = []
+}
+
+variable "dns_domain" {
+  description = "DNS search domain for cloud-init"
+  type        = string
+  default     = null
+  nullable    = true
+}
