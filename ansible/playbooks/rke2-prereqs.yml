@@ -1,0 +1,73 @@
+---
+- name: Prepare RKE2 nodes
+  hosts: rke2_cluster
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Update APT cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Install RKE2 prerequisite packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - ca-certificates
+          - iptables
+          - iproute2
+          - socat
+          - conntrack
+          - ebtables
+          - ethtool
+        state: present
+
+    - name: Ensure kernel modules load at boot
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/rke2.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          overlay
+          br_netfilter
+
+    - name: Load overlay kernel module
+      community.general.modprobe:
+        name: overlay
+        state: present
+
+    - name: Load br_netfilter kernel module
+      community.general.modprobe:
+        name: br_netfilter
+        state: present
+
+    - name: Configure Kubernetes sysctl settings
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/99-rke2.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward = 1
+      notify: Reload sysctl
+
+    - name: Disable swap immediately
+      ansible.builtin.command:
+        cmd: swapoff -a
+      when: ansible_swaptotal_mb | int > 0
+      changed_when: true
+
+    - name: Remove swap entries from fstab
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^([^#].*\sswap\s.*)$'
+        replace: '# \1'
+
+  handlers:
+    - name: Reload sysctl
+      ansible.builtin.command:
+        cmd: sysctl --system
