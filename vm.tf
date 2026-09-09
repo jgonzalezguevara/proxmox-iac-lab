@@ -1,64 +1,22 @@
-resource "proxmox_virtual_environment_vm" "test_vm01" {
-  name      = "test-vm01"
-  node_name = "proxmox-lab"
-  vm_id     = 101
+module "test_vm01" {
+  source = "./modules/proxmox-vm"
 
-  clone {
-    vm_id = 9000
-    full  = true
-  }
-
-  cpu {
-    cores = 2
-    type  = "host"
-  }
-
-  memory {
-    dedicated = 2048
-  }
-
-  disk {
-    datastore_id = "local-lvm"
-    interface    = "scsi0"
-    size         = 20
-  }
-
-  initialization {
-    datastore_id = "local-lvm"
-
-    ip_config {
-      ipv4 {
-        address = "dhcp"
-      }
-    }
-
-    user_account {
-      username = "automation"
-      keys = [
-        trimspace(file("/root/.ssh/id_rsa.pub"))
-      ]
-    }
-  }
-
-  agent {
-    enabled = true
-
-    wait_for_ip {
-      ipv4 = true
-    }
-  }
-
-  network_device {
-    bridge = "vmbr0"
-  }
-
-  serial_device {
-    device = "socket"
-  }
-
-  operating_system {
-    type = "l26"
-  }
+  name           = "test-vm01"
+  node_name      = "proxmox-lab"
+  vm_id          = 101
+  clone_vm_id    = 9000
+  cpu_cores      = 2
+  memory_mb      = 2048
+  disk_size_gb   = 20
+  datastore_id   = "local-lvm"
+  bridge         = "vmbr0"
+  username       = "automation"
+  ssh_public_key = trimspace(file("/root/.ssh/id_rsa.pub"))
 
   started = true
+}
+
+moved {
+  from = proxmox_virtual_environment_vm.test_vm01
+  to   = module.test_vm01.proxmox_virtual_environment_vm.this
 }
