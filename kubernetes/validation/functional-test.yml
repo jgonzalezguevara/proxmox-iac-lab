@@ -1,0 +1,70 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lab-validation
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: echo-server
+  namespace: lab-validation
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: echo-server
+  template:
+    metadata:
+      labels:
+        app: echo-server
+    spec:
+      containers:
+        - name: echo-server
+          image: hashicorp/http-echo:1.0
+          args:
+            - "-text=rke2-lab-ok"
+          ports:
+            - containerPort: 5678
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "16Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: echo-server
+  namespace: lab-validation
+spec:
+  selector:
+    app: echo-server
+  ports:
+    - port: 80
+      targetPort: 5678
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: client
+  namespace: lab-validation
+spec:
+  containers:
+    - name: client
+      image: curlimages/curl:8.16.0
+      command:
+        - sleep
+        - "3600"
+      resources:
+        requests:
+          cpu: "10m"
+          memory: "16Mi"
+        limits:
+          cpu: "100m"
+          memory: "64Mi"
