@@ -1,0 +1,56 @@
+---
+- name: Bootstrap first RKE2 server
+  hosts: rke2-cp01
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Create RKE2 configuration directory
+      ansible.builtin.file:
+        path: /etc/rancher/rke2
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Configure first RKE2 server
+      ansible.builtin.copy:
+        dest: /etc/rancher/rke2/config.yaml
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          cluster-init: true
+          node-ip: 10.20.0.11
+          advertise-address: 10.20.0.11
+          tls-san:
+            - 10.20.0.11
+
+    - name: Check whether RKE2 is already installed
+      ansible.builtin.stat:
+        path: /usr/local/bin/rke2
+      register: rke2_binary
+
+    - name: Download RKE2 installer
+      ansible.builtin.get_url:
+        url: https://get.rke2.io
+        dest: /usr/local/src/install-rke2.sh
+        owner: root
+        group: root
+        mode: "0755"
+      when: not rke2_binary.stat.exists
+
+    - name: Install RKE2 server
+      ansible.builtin.command:
+        cmd: /usr/local/src/install-rke2.sh
+        creates: /usr/local/bin/rke2
+      when: not rke2_binary.stat.exists
+      environment:
+        INSTALL_RKE2_TYPE: server
+        INSTALL_RKE2_VERSION: "{{ rke2_version }}"
+
+    - name: Enable and start RKE2 server
+      ansible.builtin.systemd:
+        name: rke2-server
+        enabled: true
+        state: started

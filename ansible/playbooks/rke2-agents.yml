@@ -1,0 +1,79 @@
+---
+- name: Read RKE2 join token from first server
+  hosts: rke2-cp01
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Read RKE2 server token
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/rke2/server/node-token
+      register: rke2_token_raw
+      no_log: true
+
+    - name: Store RKE2 server token for this run
+      ansible.builtin.set_fact:
+        rke2_join_token: "{{ rke2_token_raw.content | b64decode | trim }}"
+      no_log: true
+
+- name: Join RKE2 agent nodes
+  hosts: rke2_agents
+  gather_facts: true
+  become: true
+
+  tasks:
+    - name: Create RKE2 configuration directory
+      ansible.builtin.file:
+        path: /etc/rancher/rke2
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Configure RKE2 agent
+      ansible.builtin.copy:
+        dest: /etc/rancher/rke2/config.yaml
+        owner: root
+        group: root
+        mode: "0600"
+        content: |
+          server: https://{{ rke2_registration_address }}:9345
+          token: "{{ hostvars['rke2-cp01']['rke2_join_token'] }}"
+          node-ip: {{ ansible_host }}
+      no_log: true
+      notify: Restart RKE2 agent
+
+    - name: Check whether RKE2 is already installed
+      ansible.builtin.stat:
+        path: /usr/local/bin/rke2
+      register: rke2_binary
+
+    - name: Download RKE2 installer
+      ansible.builtin.get_url:
+        url: https://get.rke2.io
+        dest: /usr/local/src/install-rke2.sh
+        owner: root
+        group: root
+        mode: "0755"
+      when: not rke2_binary.stat.exists
+
+    - name: Install pinned RKE2 agent version
+      ansible.builtin.command:
+        cmd: /usr/local/src/install-rke2.sh
+        creates: /usr/local/bin/rke2
+      environment:
+        INSTALL_RKE2_TYPE: agent
+        INSTALL_RKE2_VERSION: "{{ rke2_version }}"
+      when: not rke2_binary.stat.exists
+
+    - name: Enable and start RKE2 agent
+      ansible.builtin.systemd:
+        name: rke2-agent
+        enabled: true
+        state: started
+
+  handlers:
+    - name: Restart RKE2 agent
+      ansible.builtin.systemd:
+        name: rke2-agent
+        state: restarted
