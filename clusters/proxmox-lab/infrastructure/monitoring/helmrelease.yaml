@@ -17,6 +17,22 @@ spec:
       interval: 1h
 
   values:
+    defaultRules:
+      rules:
+        etcd: false
+        kubeControllerManager: false
+        kubeSchedulerAlerting: false
+        kubeSchedulerRecording: false
+
+    kubeControllerManager:
+      enabled: false
+
+    kubeScheduler:
+      enabled: false
+
+    kubeEtcd:
+      enabled: false
+
     alertmanager:
       enabled: false
 
