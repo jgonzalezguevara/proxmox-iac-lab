@@ -1,66 +1,367 @@
 # Proxmox IaC Lab
 
-Laboratorio de infraestructura reproducible sobre Proxmox VE usando OpenTofu.
+Laboratorio reproducible de Platform Engineering sobre Proxmox VE, construido con OpenTofu, Ansible, RKE2, Flux CD, Argo CD y kube-prometheus-stack.
 
-## Estado validado
+El proyecto cubre el ciclo completo:
 
-- Proxmox VE 9.2.11
-- OpenTofu 1.12.6
-- Provider `bpg/proxmox`
-- Autenticación mediante API token dedicado
-- Template Debian 13 cloud-init (`VMID 9000`)
-- `qemu-guest-agent` integrado en la imagen
-- Creación de VM mediante OpenTofu
-- Cloud-init con usuario y SSH key
-- DHCP sobre `vmbr0`
-- Detección de IP mediante QEMU Guest Agent
-- Reemplazo reproducible de VM
-- Idempotencia validada con `tofu plan`
+```text
+Proxmox VE
+    ↓
+OpenTofu
+    ↓
+VMs + cloud-init + red privada
+    ↓
+Ansible
+    ↓
+RKE2
+    ↓
+Kubernetes
+    ↓
+GitOps
+    ↓
+Storage + Observabilidad
+```
 
-## Flujo
+## Estado
 
-OpenTofu -> Proxmox API -> Template -> VM -> cloud-init -> QEMU Guest Agent
+**Plataforma construida, operativa y validada.**
+
+Última validación global: **11 de septiembre de 2026**.
+
+### Componentes principales
+
+| Capa | Tecnología | Estado |
+|---|---|---|
+| Virtualización | Proxmox VE 9.2.11 | Operativa |
+| IaC | OpenTofu 1.12.6 | Implementado |
+| Provider | `bpg/proxmox` 0.112.0 | Implementado |
+| Configuración | cloud-init | Validada |
+| Automatización | Ansible | Validada |
+| Kubernetes | RKE2 v1.36.4+rke2r1 | 4/4 nodos Ready |
+| CNI | Canal | Operativo |
+| GitOps | Flux CD | Operativo |
+| GitOps comparativo | Argo CD | Operativo |
+| Storage | Rancher Local Path Provisioner | Operativo |
+| Monitoring | Prometheus | Ready / Healthy |
+| Dashboards | Grafana | Healthy |
+
+## Topología RKE2
+
+| Nodo | Rol | IP | vCPU | RAM | Disco |
+|---|---|---:|---:|---:|---:|
+| `rke2-cp01` | control-plane + etcd | `10.20.0.11` | 2 | 4 GiB | 30 GiB |
+| `rke2-cp02` | control-plane + etcd | `10.20.0.12` | 2 | 4 GiB | 30 GiB |
+| `rke2-cp03` | control-plane + etcd | `10.20.0.13` | 2 | 4 GiB | 30 GiB |
+| `rke2-worker01` | worker | `10.20.0.21` | 4 | 6 GiB | 50 GiB |
+
+Sistema operativo: Debian 13.
+
+## Red
+
+El laboratorio utiliza dos bridges:
+
+- `vmbr0`: gestión y salida externa.
+- `vmbr1`: red privada `10.20.0.0/24` para RKE2.
+
+El host Proxmox proporciona routing y NAT para la red privada.
+
+La persistencia completa de red, forwarding, NAT y conectividad fue validada mediante reinicio del host.
+
+## Infrastructure as Code
+
+El repositorio utiliza un módulo reutilizable:
+
+```text
+modules/proxmox-vm/
+```
+
+El módulo encapsula:
+
+- clonación completa desde template;
+- CPU y memoria;
+- disco;
+- bridge;
+- cloud-init;
+- usuario y SSH key;
+- IPv4 y gateway;
+- DNS;
+- QEMU Guest Agent;
+- outputs de VM, IP y MAC.
+
+Template base:
+
+```text
+Debian 13 cloud-init — VMID 9000
+```
+
+## Ansible
+
+Playbooks principales:
+
+```text
+ansible/playbooks/
+├── baseline.yml
+├── rke2-prereqs.yml
+├── rke2-bootstrap.yml
+├── rke2-servers.yml
+├── rke2-agents.yml
+└── validate.yml
+```
+
+Ansible automatiza:
+
+- baseline Linux;
+- paquetes;
+- módulos kernel;
+- sysctl;
+- eliminación de swap;
+- bootstrap del primer servidor RKE2;
+- unión de servidores adicionales;
+- unión del worker.
+
+El token de RKE2 no se almacena estáticamente en el repositorio.
+
+## Kubernetes
+
+El clúster fue validado funcionalmente, no solo mediante estado `Ready`.
+
+La validación incluye:
+
+- scheduling;
+- DNS interno;
+- comunicación HTTP entre workloads;
+- ejecución real de aplicaciones.
+
+Manifiesto:
+
+```text
+kubernetes/validation/functional-test.yml
+```
+
+## GitOps
+
+### Flux CD
+
+Flux sincroniza:
+
+```text
+./clusters/proxmox-lab
+```
+
+desde la rama:
+
+```text
+main
+```
+
+con pruning habilitado.
+
+La estructura separa:
+
+```text
+apps/
+infrastructure/
+flux-system/
+```
+
+Flux administra actualmente:
+
+- `flux-demo`;
+- Local Path Provisioner;
+- kube-prometheus-stack.
+
+### Argo CD
+
+Argo CD se utiliza como implementación GitOps comparativa.
+
+La aplicación:
+
+```text
+argocd-demo
+```
+
+utiliza:
+
+- sync automático;
+- `prune`;
+- `selfHeal`;
+- creación automática del namespace.
+
+Flux y Argo CD no compiten por los mismos recursos.
+
+## Storage
+
+Se utiliza Rancher Local Path Provisioner v0.0.37.
+
+StorageClass:
+
+```text
+local-path
+```
+
+Configuración:
+
+```text
+reclaimPolicy: Delete
+volumeBindingMode: WaitForFirstConsumer
+```
+
+El almacenamiento está restringido al worker:
+
+```text
+rke2-worker01
+```
+
+Ruta:
+
+```text
+/opt/local-path-provisioner
+```
+
+La solución es intencionadamente local y no HA.
+
+El ciclo completo PVC/PV/escritura/lectura/eliminación fue validado.
+
+## Observabilidad
+
+Stack:
+
+```text
+kube-prometheus-stack 89.2.4
+```
+
+Componentes:
+
+- Prometheus;
+- Grafana;
+- Prometheus Operator;
+- kube-state-metrics;
+- node-exporter.
+
+Prometheus:
+
+```text
+retention: 3d
+retentionSize: 6GB
+storage: 8Gi
+```
+
+Grafana:
+
+```text
+storage: 2Gi
+memory limit: 384Mi
+```
+
+Los componentes pesados se fijan al worker.
+
+## Hardening RKE2
+
+Los endpoints locales de:
+
+- etcd;
+- kube-controller-manager;
+- kube-scheduler;
+
+se mantuvieron sin exponer.
+
+En lugar de debilitar RKE2 para satisfacer Prometheus, el chart de observabilidad se adaptó al modelo de seguridad del clúster.
+
+Resultado final: todos los targets configurados de Prometheus quedaron `UP`.
 
 ## Seguridad
 
-Los secretos, variables sensibles y estados locales de OpenTofu no se versionan.
+No se versionan:
 
-## Red privada del laboratorio
+```text
+.tofu/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+```
 
-El host Proxmox mantiene dos bridges separados:
+La ausencia de estos artefactos en Git fue verificada.
 
-- `vmbr0`: red de gestión y salida externa.
-  - Proxmox: `192.168.137.2/24`
-  - Gateway: `192.168.137.1`
-  - El gateway corresponde a Windows ICS y proporciona acceso a Internet.
-- `vmbr1`: red privada del laboratorio.
-  - Proxmox: `10.20.0.1/24`
-  - Sin interfaz física asociada.
-  - Destinada a cargas con direccionamiento estático, como el clúster RKE2.
+El token de registro RKE2 fue rotado de forma controlada tras aparecer accidentalmente en una salida interactiva.
 
-### Routing
+Orden de reinicio durante la rotación:
 
-El forwarding IPv4 está habilitado de forma persistente mediante `/etc/sysctl.d/99-proxmox-lab-routing.conf`:
+```text
+rke2-cp02
+→ rke2-cp03
+→ rke2-cp01
+→ rke2-worker01
+```
 
-    net.ipv4.ip_forward=1
+Tras la rotación, los cuatro nodos permanecieron `Ready`.
 
-### NAT
+## Estructura del repositorio
 
-La red privada `10.20.0.0/24` sale a Internet mediante NAT sobre `vmbr0`.
+```text
+proxmox-iac-lab/
+├── ansible/
+├── argocd/
+├── clusters/
+│   └── proxmox-lab/
+├── docs/
+│   ├── 09-rke2-gitops.md
+│   ├── 10-observability.md
+│   └── PROJECT-REPORT.md
+├── kubernetes/
+├── modules/
+│   └── proxmox-vm/
+├── data.tf
+├── provider.tf
+├── rke2.tf
+├── versions.tf
+├── vm.tf
+└── README.md
+```
 
-La regla persistente es gestionada por `/etc/systemd/system/proxmox-lab-nat.service` y aplica:
+## Documentación
 
-    10.20.0.0/24 -> MASQUERADE -> vmbr0
+- `docs/09-rke2-gitops.md` — despliegue RKE2, validación Kubernetes y GitOps.
+- `docs/10-observability.md` — storage, Prometheus, Grafana, dimensionamiento y hardening.
+- `docs/PROJECT-REPORT.md` — informe técnico global y exhaustivo del proyecto.
 
-El servicio está habilitado para arrancar automáticamente con el host.
+## Decisiones arquitectónicas
 
-La persistencia completa de `vmbr1`, IPv4 forwarding, NAT y conectividad de las VMs fue validada mediante un reinicio completo del host Proxmox.
+El proyecto prioriza:
 
-## Cloud-init DNS
+- IaC sobre configuración manual;
+- módulos reutilizables;
+- separación de responsabilidades;
+- versiones fijadas;
+- secretos fuera de Git;
+- propietario GitOps único;
+- almacenamiento honesto respecto a sus limitaciones;
+- observabilidad dimensionada;
+- seguridad por encima de dashboards perfectos;
+- validación funcional antes de añadir nuevas capas.
 
-El módulo `modules/proxmox-vm` permite configurar DNS explícitamente por VM mediante:
+## Limitaciones conocidas
 
-- `dns_servers`
-- `dns_domain`
+- un único host Proxmox físico;
+- un único worker;
+- almacenamiento local no HA;
+- recursos de memoria limitados;
+- API Proxmox local con TLS no validado;
+- credenciales OpenTofu cargadas externamente;
+- sin balanceador externo/VIP del control plane;
+- sin almacenamiento distribuido;
+- sin Alertmanager productivo;
+- sin disaster recovery multi-host.
 
-Esto permite usar direccionamiento IPv4 estático en la red privada sin depender del DHCP o DNS proporcionado por Windows ICS.
+Estas limitaciones son explícitas y forman parte del alcance del laboratorio.
+
+## Informe completo
+
+Para la descripción técnica exhaustiva:
+
+```text
+docs/PROJECT-REPORT.md
+```
+
+El informe recoge arquitectura, IaC, Ansible, RKE2, GitOps, almacenamiento, observabilidad, seguridad, validaciones, decisiones y limitaciones.
