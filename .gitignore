@@ -6,3 +6,6 @@
 *.tfvars.json
 crash.log
 crash.*.log
+
+# Generated Ansible inventory
+ansible/inventory/generated/
