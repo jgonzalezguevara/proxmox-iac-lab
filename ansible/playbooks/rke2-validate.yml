@@ -1,0 +1,47 @@
+---
+- name: Validate RKE2 cluster
+  hosts: rke2_servers
+  gather_facts: false
+  become: true
+
+  tasks:
+    - name: Wait for all Kubernetes nodes to be Ready
+      ansible.builtin.command:
+        argv:
+          - /var/lib/rancher/rke2/bin/kubectl
+          - --kubeconfig
+          - /etc/rancher/rke2/rke2.yaml
+          - wait
+          - --for=condition=Ready
+          - node
+          - --all
+          - --timeout=120s
+      register: rke2_ready
+      changed_when: false
+      run_once: true
+
+    - name: Read Kubernetes node list
+      ansible.builtin.command:
+        argv:
+          - /var/lib/rancher/rke2/bin/kubectl
+          - --kubeconfig
+          - /etc/rancher/rke2/rke2.yaml
+          - get
+          - nodes
+          - -o
+          - name
+      register: rke2_nodes
+      changed_when: false
+      run_once: true
+
+    - name: Verify expected node count
+      ansible.builtin.assert:
+        that:
+          - rke2_nodes.stdout_lines | length == groups['rke2_cluster'] | length
+        fail_msg: >-
+          Kubernetes reports {{ rke2_nodes.stdout_lines | length }} nodes,
+          but Ansible inventory expects {{ groups['rke2_cluster'] | length }}.
+        success_msg: >-
+          RKE2 cluster is healthy with {{ rke2_nodes.stdout_lines | length }}
+          Ready nodes.
+      run_once: true

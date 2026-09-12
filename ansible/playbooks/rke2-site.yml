@@ -1,0 +1,6 @@
+---
+- import_playbook: rke2-prereqs.yml
+- import_playbook: rke2-bootstrap.yml
+- import_playbook: rke2-servers.yml
+- import_playbook: rke2-agents.yml
+- import_playbook: rke2-validate.yml
