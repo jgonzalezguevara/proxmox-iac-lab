@@ -9,3 +9,7 @@ crash.*.log
 
 # Generated Ansible inventory
 ansible/inventory/generated/
+
+# Python cache
+__pycache__/
+*.py[cod]
